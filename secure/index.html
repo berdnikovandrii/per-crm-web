@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#080808">
+<title>Secure your ride · Pacific Elite Rides</title>
+<!--
+  "Secure your ride" — the rider leaves a card on file for a confirmed ride (Andrii, 2026-11-17).
+  Link: https://crm.pacificeliterides.com/secure/?t=<leads.card_token>
+  The card form below is Square's own (Web Payments SDK, an iframe): the card number goes from the rider's browser
+  straight to Square and comes back as a one-time token. This page and our server never see the number.
+  Server side: supabase/functions/card-save. Nothing is charged here.
+-->
+<style>
+  :root { --black:#080808; --gold:#C8A85F; --goldText:#8A6D1F; --ink:#141416; --muted:#6B6B70; --line:#E6E6EA; --bg:#F5F5F7; --green:#1E8E4E; --red:#C62828; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; -webkit-text-size-adjust:100%; }
+  header { background:var(--black); padding:18px 20px; text-align:center; }
+  header .brand { color:var(--gold); font-weight:700; letter-spacing:.22em; font-size:13px; }
+  main { max-width:520px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:26px; line-height:1.15; margin:8px 0 6px; letter-spacing:-.01em; }
+  .lead { color:var(--muted); font-size:15.5px; line-height:1.45; margin:0 0 18px; }
+  .card { background:#fff; border-radius:16px; padding:16px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .label { font-size:11.5px; font-weight:800; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+  .ride + .ride { border-top:1px solid var(--line); margin-top:12px; padding-top:12px; }
+  .ride .when { font-weight:700; font-size:16px; }
+  .ride .route { color:#333; font-size:15px; margin-top:3px; line-height:1.35; }
+  .ride .meta { color:var(--muted); font-size:13.5px; margin-top:3px; display:flex; justify-content:space-between; gap:12px; }
+  .ride .price { color:var(--ink); font-weight:700; }
+  ul.points { margin:0; padding:0; list-style:none; }
+  ul.points li { position:relative; padding:0 0 10px 26px; font-size:15px; line-height:1.4; }
+  ul.points li:last-child { padding-bottom:0; }
+  ul.points li::before { content:""; position:absolute; left:4px; top:7px; width:8px; height:8px; border-radius:50%; background:var(--gold); }
+  ul.points b { font-weight:700; }
+  label.field { display:block; font-size:13px; font-weight:600; color:#444; margin:0 0 6px; }
+  input[type=text] { width:100%; font:inherit; font-size:16px; padding:13px 12px; border:1px solid #D9D9DE; border-radius:8px; background:#fff; color:var(--ink); margin-bottom:14px; }
+  input[type=text]:focus { outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(200,168,95,.25); }
+  #card { min-height:92px; }
+  .agree { display:flex; gap:12px; align-items:flex-start; margin:6px 0 16px; cursor:pointer; }
+  .agree input { width:22px; height:22px; margin:1px 0 0; accent-color:var(--goldText); flex:none; }
+  .agree span { font-size:13.5px; line-height:1.45; color:#333; }
+  button.primary { width:100%; border:0; border-radius:12px; background:var(--black); color:var(--gold); font:inherit; font-size:17px; font-weight:700; padding:16px; cursor:pointer; }
+  button.primary:disabled { opacity:.55; cursor:default; }
+  .small { font-size:12.5px; color:var(--muted); line-height:1.45; text-align:center; margin-top:12px; }
+  .error { background:#FDECEC; color:var(--red); border-radius:10px; padding:12px 14px; font-size:14.5px; line-height:1.4; margin-bottom:14px; }
+  .saved { display:flex; align-items:center; gap:12px; }
+  .saved .tick { width:40px; height:40px; border-radius:50%; background:#E7F5EC; color:var(--green); display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800; flex:none; }
+  .saved .t1 { font-weight:700; font-size:16px; } .saved .t2 { color:var(--muted); font-size:14px; margin-top:2px; }
+  a { color:var(--goldText); font-weight:600; text-decoration:none; }
+  .link { background:none; border:0; padding:0; font:inherit; color:var(--goldText); font-weight:600; cursor:pointer; }
+  .center { text-align:center; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header><div class="brand">PACIFIC ELITE RIDES</div></header>
+<main>
+  <div id="loading" class="center lead" style="margin-top:40px">Loading your ride…</div>
+
+  <div id="dead" hidden>
+    <h1>This link is not active</h1>
+    <p class="lead" id="deadText"></p>
+    <p class="lead">Questions? Call or text <a href="tel:+16193945340">(619) 394-5340</a>.</p>
+  </div>
+
+  <div id="page" hidden>
+    <h1 id="title">Secure your ride</h1>
+    <p class="lead" id="intro">Add a card to hold your booking. <b>Nothing is charged now.</b></p>
+
+    <div class="card">
+      <div class="label">Your booking</div>
+      <div id="rides"></div>
+    </div>
+
+    <div class="card" id="savedBox" hidden>
+      <div class="saved">
+        <div class="tick">✓</div>
+        <div>
+          <div class="t1" id="savedTitle">Card on file</div>
+          <div class="t2" id="savedText">Nothing was charged.</div>
+        </div>
+      </div>
+      <div class="small" style="text-align:left;margin-top:14px">
+        You can still pay for the ride any way you like: Zelle, Venmo or card.
+        <button class="link" id="replace" type="button">Use a different card</button>
+      </div>
+    </div>
+
+    <div class="card" id="policyBox">
+      <div class="label">How it works</div>
+      <ul class="points">
+        <li><b>No charge today.</b> The card only holds your booking.</li>
+        <li><b>Free cancellation</b> up to <span id="hours">4 hours</span> before pickup. Just call or text us.</li>
+        <li>If the ride is cancelled later than that, or the passenger is not at the pickup, <b>the full ride price plus a 3.5% card fee is charged</b> to this card.</li>
+        <li>Flight delayed? Airport pickups follow your flight, with 60 minutes of free waiting after landing.</li>
+      </ul>
+    </div>
+
+    <form class="card" id="form" autocomplete="on" novalidate>
+      <div class="label">Card</div>
+      <div class="error" id="error" hidden></div>
+      <label class="field" for="name">Name on card</label>
+      <input type="text" id="name" name="cc-name" autocomplete="cc-name" maxlength="96" placeholder="Full name">
+      <div id="card"></div>
+      <label class="agree">
+        <input type="checkbox" id="agree">
+        <span id="consent"></span>
+      </label>
+      <button class="primary" id="save" type="submit" disabled>Save card · no charge</button>
+      <div class="small">Card details are entered in a secure form by Square and are never seen or stored by Pacific Elite Rides.</div>
+    </form>
+
+    <p class="small">Pacific Elite Rides LLC · TCP 35857B · <a href="tel:+16193945340">(619) 394-5340</a></p>
+  </div>
+</main>
+
+<script src="https://web.squarecdn.com/v1/square.js"></script>
+<script>
+(function () {
+  var API = 'https://krvdbtmrddhcafhvajin.supabase.co/functions/v1/card-save';
+  var token = (new URLSearchParams(location.search).get('t') || '').trim();
+  var $ = function (id) { return document.getElementById(id); };
+  var card = null, info = null, busy = false;
+
+  function call(body) {
+    return fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); });
+  }
+  function usd(n) { return '$' + (Math.round(n) === n ? n : n.toFixed(2)); }
+  function text(el, s) { el.textContent = s; }
+  function showError(msg) { var e = $('error'); if (!msg) { e.hidden = true; return; } text(e, msg); e.hidden = false; e.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  function dead(msg) { $('loading').hidden = true; $('page').hidden = true; text($('deadText'), msg || 'Please ask us for a new link.'); $('dead').hidden = false; }
+  function refreshButton() { $('save').disabled = busy || !card || !$('agree').checked; text($('save'), busy ? 'Saving…' : 'Save card · no charge'); }
+
+  function showSaved(c, fresh) {
+    text($('savedTitle'), (c.brand ? String(c.brand).replace(/_/g, ' ') : 'Card') + ' •••• ' + (c.last4 || '') + ' is on file');
+    text($('savedText'), 'Your ride is secured. Nothing was charged.');
+    $('savedBox').hidden = false; $('form').hidden = true; $('policyBox').hidden = false;
+    text($('title'), 'Your ride is secured'); $('intro').hidden = true;
+    if (fresh) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function mountCard() {
+    if (card || !window.Square) { if (!window.Square) showError('The secure card form did not load. Please check your connection and reload the page.'); return Promise.resolve(); }
+    var payments;
+    try { payments = window.Square.payments(info.square.applicationId, info.square.locationId); }
+    catch (e) { showError('The secure card form did not load. Please reload the page.'); return Promise.resolve(); }
+    return payments.card().then(function (c) { return c.attach('#card').then(function () { card = c; refreshButton(); }); })
+      .catch(function () { showError('The secure card form did not load. Please reload the page.'); });
+  }
+
+  function tokenize() {
+    var full = $('name').value.trim().split(/\s+/);
+    var details = { intent: 'STORE', customerInitiated: true, sellerKeyedIn: false, billingContact: { givenName: full[0] || undefined, familyName: full.slice(1).join(' ') || undefined } };
+    // Square's current way: the details go into tokenize(). An older SDK build ignores or rejects the argument — then plain tokenize().
+    return card.tokenize(details).catch(function () { return card.tokenize(); });
+  }
+
+  function submit(ev) {
+    ev.preventDefault();
+    if (busy || !card) return;
+    if (!$('agree').checked) { showError('Please tick the box to agree to the cancellation policy.'); return; }
+    busy = true; showError(''); refreshButton();
+    tokenize().then(function (res) {
+      if (!res || res.status !== 'OK' || !res.token) {
+        var first = res && res.errors && res.errors[0] && res.errors[0].message;
+        throw new Error(first || 'Please check the card details.');
+      }
+      var postal = res.details && res.details.billing && res.details.billing.postalCode;
+      return call({ action: 'save', token: token, sourceId: res.token, agree: true, cardholder: $('name').value.trim(), postal: postal || '' });
+    }).then(function (r) {
+      if (!r.ok || !r.body.card) throw new Error(r.body.error || 'We could not save the card. Please try again.');
+      busy = false; showSaved(r.body.card, true);
+    }).catch(function (e) { busy = false; refreshButton(); showError(e && e.message ? e.message : 'Something went wrong. Please try again.'); });
+  }
+
+  if (!/^[0-9a-f-]{36}$/i.test(token)) { dead('This link is incomplete. Please open it again from the message we sent you.'); return; }
+  call({ action: 'info', token: token }).then(function (r) {
+    if (!r.ok) { dead(r.body.error); return; }
+    info = r.body;
+    if (!info.active) { dead(info.reason); return; }
+    var box = $('rides');
+    info.rides.forEach(function (ride) {
+      var d = document.createElement('div'); d.className = 'ride';
+      var w = document.createElement('div'); w.className = 'when'; text(w, ride.when || 'Time to be confirmed');
+      var ro = document.createElement('div'); ro.className = 'route'; text(ro, ride.route || '');
+      var m = document.createElement('div'); m.className = 'meta';
+      var v = document.createElement('span'); text(v, ride.vehicle || '');
+      var p = document.createElement('span'); p.className = 'price'; text(p, ride.price != null ? usd(ride.price) : '');
+      m.appendChild(v); m.appendChild(p); d.appendChild(w); d.appendChild(ro); d.appendChild(m); box.appendChild(d);
+    });
+    var h = info.policy.freeHours;
+    text($('hours'), h + (h === 1 ? ' hour' : ' hours'));
+    text($('consent'), info.policy.consent);
+    if (info.name) text($('title'), info.name + ', secure your ride');
+    $('loading').hidden = true; $('page').hidden = false;
+    if (info.card) showSaved(info.card, false); else mountCard();
+  }).catch(function () { dead('We could not load your ride. Please check your connection and try again.'); });
+
+  $('agree').addEventListener('change', refreshButton);
+  $('form').addEventListener('submit', submit);
+  $('replace').addEventListener('click', function () {
+    $('savedBox').hidden = true; $('form').hidden = false; text($('title'), 'Use a different card'); mountCard();
+    $('form').scrollIntoView({ behavior: 'smooth' });
+  });
+})();
+</script>
+</body>
+</html>
